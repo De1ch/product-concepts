@@ -7,7 +7,7 @@
 Шифрование: PBKDF2-SHA256 (600 000 итераций) → AES-256-GCM, gzip перед шифрованием.
 В репозиторий попадает только шифротекст; исходный HTML не коммитится.
 """
-import base64, gzip, json, os, secrets, sys
+import re, base64, gzip, json, os, secrets, sys
 from pathlib import Path
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -22,7 +22,18 @@ def main():
     if len(pw) < 10:
         sys.exit('CONCEPT_PASSWORD не задан или короче 10 символов')
     src, dst = Path(sys.argv[1]), Path(sys.argv[2])
-    salt, iv = secrets.token_bytes(16), secrets.token_bytes(12)
+    # Соль берём из прошлой сборки: тогда «Запомнить на этом устройстве» переживает обновления.
+    # Это безопасно: соль не секрет, а IV для AES-GCM каждый раз новый.
+    salt = None
+    if dst.exists():
+        try:
+            m = re.search(r'"salt":\s*"([^"]+)"', dst.read_text(encoding='utf-8'))
+            if m and '"iter": %d' % ITER in dst.read_text(encoding='utf-8'):
+                salt = base64.b64decode(m.group(1))
+        except Exception:
+            salt = None
+    salt = salt or secrets.token_bytes(16)
+    iv = secrets.token_bytes(12)
     key = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=ITER).derive(pw.encode())
     ct = AESGCM(key).encrypt(iv, gzip.compress(src.read_bytes(), 9), None)
     b64 = lambda b: base64.b64encode(b).decode()
