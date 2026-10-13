@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="referrer" content="no-referrer">
+<title>Product Concepts</title>
+<style>
+:root{--bg:#0f1115;--card:#181b22;--line:#2a2f3a;--tx:#e9ecf2;--mut:#8b93a3;--acc:#7c5cff;--err:#ff6b6b}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;align-items:center;justify-content:center;padding:16px}
+form{width:100%;max-width:360px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:28px 24px}
+h1{font-size:19px;margin:0 0 6px}p{color:var(--mut);margin:0 0 20px;font-size:14px}
+input[type=password]{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--tx);font-size:16px;outline:none}
+input[type=password]:focus{border-color:var(--acc)}
+label{display:flex;gap:8px;align-items:center;margin:14px 0 18px;color:var(--mut);font-size:14px;cursor:pointer}
+button{width:100%;padding:12px;border:0;border-radius:10px;background:var(--acc);color:#fff;font-size:15px;font-weight:600;cursor:pointer}
+button:disabled{opacity:.6;cursor:progress}
+.err{color:var(--err);font-size:13px;min-height:18px;margin-top:10px}
+</style>
+</head>
+<body>
+<form id="f" autocomplete="off">
+  <h1>Product Concepts</h1>
+  <p>Страница защищена паролем. Его выдаёт владелец концепта.</p>
+  <input id="pw" type="password" placeholder="Пароль" autofocus required>
+  <label><input id="rm" type="checkbox" checked> Запомнить на этом устройстве</label>
+  <button id="go" type="submit">Открыть</button>
+  <div class="err" id="er"></div>
+</form>
+<script id="payload" type="application/json">__PAYLOAD__</script>
+<script>
+(function(){
+  var P = JSON.parse(document.getElementById('payload').textContent);
+  var LS = 'pc.key.' + P.salt;
+  var b = function(s){ return Uint8Array.from(atob(s), function(c){ return c.charCodeAt(0); }); };
+  var u = function(a){ var s=''; new Uint8Array(a).forEach(function(x){ s+=String.fromCharCode(x); }); return btoa(s); };
+  function store(k, v){ try{ v===null ? localStorage.removeItem(k) : localStorage.setItem(k, v); }catch(e){} }
+  function load(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+
+  async function derive(pw){
+    var base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
+    return crypto.subtle.deriveBits({name:'PBKDF2', hash:'SHA-256', salt:b(P.salt), iterations:P.iter}, base, 256);
+  }
+  async function decrypt(raw){
+    var key = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['decrypt']);
+    var gz = await crypto.subtle.decrypt({name:'AES-GCM', iv:b(P.iv)}, key, b(P.ct));
+    return new Response(new Blob([gz]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+  }
+  function show(html){ document.open(); document.write(html); document.close(); }
+
+  if (/[?&]logout\b/.test(location.search)) {
+    Object.keys(localStorage).forEach(function(k){ if (k.indexOf('pc.key.')===0) store(k, null); });
+    history.replaceState(null, '', location.pathname + location.hash);
+  }
+  var saved = load(LS);
+  if (saved) decrypt(b(saved)).then(show, function(){ store(LS, null); });
+
+  var f = document.getElementById('f'), er = document.getElementById('er'), go = document.getElementById('go');
+  f.addEventListener('submit', async function(e){
+    e.preventDefault(); er.textContent=''; go.disabled=true; go.textContent='Проверяю…';
+    var html;
+    try {
+      var raw = await derive(document.getElementById('pw').value);
+      html = await decrypt(raw);
+      if (document.getElementById('rm').checked) store(LS, u(raw));
+    } catch(err) {
+      er.textContent = 'Неверный пароль'; go.disabled=false; go.textContent='Открыть';
+      return;
+    }
+    show(html);
+  });
+})();
+</script>
+</body>
+</html>
