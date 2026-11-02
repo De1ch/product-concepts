@@ -18,16 +18,19 @@ label{display:flex;gap:8px;align-items:center;margin:14px 0 18px;color:var(--mut
 button{width:100%;padding:12px;border:0;border-radius:10px;background:var(--acc);color:#fff;font-size:15px;font-weight:600;cursor:pointer}
 button:disabled{opacity:.6;cursor:progress}
 .err{color:var(--err);font-size:13px;min-height:18px;margin-top:10px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+input[aria-invalid=true]{border-color:var(--err)}
 </style>
 </head>
 <body>
-<form id="f" autocomplete="off">
+<form id="f">
   <h1>Product Concepts</h1>
   <p>Страница защищена паролем. Его выдаёт владелец концепта.</p>
-  <input id="pw" type="password" placeholder="Пароль" autofocus required>
+  <label for="pw" class="sr">Пароль</label>
+  <input id="pw" type="password" placeholder="Пароль" autocomplete="current-password" aria-describedby="er" autofocus required>
   <label><input id="rm" type="checkbox" checked> Запомнить на этом устройстве</label>
   <button id="go" type="submit">Открыть</button>
-  <div class="err" id="er"></div>
+  <div class="err" id="er" role="alert" aria-live="polite"></div>
 </form>
 <script id="payload" type="application/json">__PAYLOAD__</script>
 <script>
@@ -67,11 +70,11 @@ button:disabled{opacity:.6;cursor:progress}
   if (saved && supported) unlock(b(saved)).then(unzip).then(show, function(){ store(LS, null); er.textContent = 'Сохранённый вход устарел. Введи пароль ещё раз.'; });
 
   f.addEventListener('submit', async function(e){
-    e.preventDefault(); er.textContent=''; if (!supported) { er.textContent = NOSUP; return; }
+    e.preventDefault(); er.textContent=''; document.getElementById('pw').removeAttribute('aria-invalid'); if (!supported) { er.textContent = NOSUP; return; }
     go.disabled=true; go.textContent='Проверяю…';
     var raw, gz, html;
     try { raw = await derive(document.getElementById('pw').value); gz = await unlock(raw); }
-    catch(err) { er.textContent = 'Неверный пароль'; go.disabled=false; go.textContent='Открыть'; return; }
+    catch(err) { er.textContent = 'Неверный пароль'; document.getElementById('pw').setAttribute('aria-invalid','true'); go.disabled=false; go.textContent='Открыть'; return; }
     try { html = await unzip(gz); }
     catch(err) { er.textContent = NOSUP; go.disabled=false; go.textContent='Открыть'; return; }
     if (rm.checked) store(LS, u(raw));
