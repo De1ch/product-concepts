@@ -1,0 +1,34 @@
+# Free external watch of the page and the Apps Script web app. This repo is PUBLIC, so Actions minutes are unlimited.
+# Secrets (Settings → Secrets and variables → Actions): APPS_URL (the /exec address), TG_BOT_TOKEN, TG_CHAT_ID. The address and the token never appear in the logs.
+name: ping
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+concurrency:
+  group: ping
+  cancel-in-progress: false
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Previous result
+        id: prev
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          p=$(gh run list --workflow ping.yml --status completed --limit 1 --json conclusion --jq '.[0].conclusion' 2>/dev/null || true)
+          echo "conclusion=$p" >> "$GITHUB_OUTPUT"
+      - name: Check
+        env:
+          APPS_URL: ${{ secrets.APPS_URL }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          TG_THREAD: ${{ vars.TG_THREAD }}
+          PREV: ${{ steps.prev.outputs.conclusion }}
+        run: tools/ping.sh
