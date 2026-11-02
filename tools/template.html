@@ -43,32 +43,38 @@ button:disabled{opacity:.6;cursor:progress}
     var base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
     return crypto.subtle.deriveBits({name:'PBKDF2', hash:'SHA-256', salt:b(P.salt), iterations:P.iter}, base, 256);
   }
-  async function decrypt(raw){
+  /* two steps with different meanings: AES-GCM fails = wrong password (or a stale saved key); unzip fails = the browser cannot do it */
+  async function unlock(raw){
     var key = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['decrypt']);
-    var gz = await crypto.subtle.decrypt({name:'AES-GCM', iv:b(P.iv)}, key, b(P.ct));
+    return crypto.subtle.decrypt({name:'AES-GCM', iv:b(P.iv)}, key, b(P.ct));
+  }
+  function unzip(gz){
     return new Response(new Blob([gz]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
   }
+  var NOSUP = 'Этот браузер не умеет открывать страницу. Обнови его (Chrome, Edge, Firefox, Safari 16.4+) или открой в другом.';
+  var supported = !!(window.crypto && crypto.subtle && typeof DecompressionStream !== 'undefined');
   function show(html){ window.__BUILD = P.iv; try{ sessionStorage.setItem('pc.build', P.iv); }catch(e){} document.open(); document.write(html); document.close(); }
 
   if (/[?&]logout\b/.test(location.search)) {
     Object.keys(localStorage).forEach(function(k){ if (k.indexOf('pc.key.')===0) store(k, null); });
     history.replaceState(null, '', location.pathname + location.hash);
   }
+  var f = document.getElementById('f'), er = document.getElementById('er'), go = document.getElementById('go'), rm = document.getElementById('rm');
+  /* «remember» is on by default on a computer, off on a touch device (a phone or a shared tablet keeps access for good otherwise) */
+  try { if (window.matchMedia && matchMedia('(pointer:coarse)').matches) rm.checked = false; } catch(e){}
+  if (!supported) { er.textContent = NOSUP; go.disabled = true; }
   var saved = load(LS);
-  if (saved) decrypt(b(saved)).then(show, function(){ store(LS, null); });
+  if (saved && supported) unlock(b(saved)).then(unzip).then(show, function(){ store(LS, null); er.textContent = 'Сохранённый вход устарел. Введи пароль ещё раз.'; });
 
-  var f = document.getElementById('f'), er = document.getElementById('er'), go = document.getElementById('go');
   f.addEventListener('submit', async function(e){
-    e.preventDefault(); er.textContent=''; go.disabled=true; go.textContent='Проверяю…';
-    var html;
-    try {
-      var raw = await derive(document.getElementById('pw').value);
-      html = await decrypt(raw);
-      if (document.getElementById('rm').checked) store(LS, u(raw));
-    } catch(err) {
-      er.textContent = 'Неверный пароль'; go.disabled=false; go.textContent='Открыть';
-      return;
-    }
+    e.preventDefault(); er.textContent=''; if (!supported) { er.textContent = NOSUP; return; }
+    go.disabled=true; go.textContent='Проверяю…';
+    var raw, gz, html;
+    try { raw = await derive(document.getElementById('pw').value); gz = await unlock(raw); }
+    catch(err) { er.textContent = 'Неверный пароль'; go.disabled=false; go.textContent='Открыть'; return; }
+    try { html = await unzip(gz); }
+    catch(err) { er.textContent = NOSUP; go.disabled=false; go.textContent='Открыть'; return; }
+    if (rm.checked) store(LS, u(raw));
     show(html);
   });
 })();
