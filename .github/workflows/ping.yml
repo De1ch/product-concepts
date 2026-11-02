@@ -3,7 +3,7 @@
 name: ping
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '4,14,24,34,44,54 * * * *'   # not :00/:10, GitHub skips the busiest minutes
   workflow_dispatch:
 permissions:
   actions: read
