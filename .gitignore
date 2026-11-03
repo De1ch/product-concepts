@@ -1,3 +1,4 @@
 *.plain.html
 src/
 .env
+.DS_Store
